@@ -10,7 +10,7 @@ Parameters:
     Description: 'Prefix for the S3 bucket name (will append random suffix)'
     MaxLength: 37
     AllowedPattern: '^[a-z0-9-]+$'
-  
+
   EnableLogging:
     Type: String
     Default: 'false'
@@ -18,32 +18,32 @@ Parameters:
     AllowedValues:
       - 'true'
       - 'false'
-  
+
   LifecycleTransitionIADays:
     Type: Number
     Default: 30
     Description: 'Number of days before transitioning objects to Standard-IA storage class'
-  
+
   LifecycleTransitionGlacierDays:
     Type: Number
     Default: 90
     Description: 'Number of days before transitioning objects to Glacier storage class'
-  
+
   LifecycleExpirationDays:
     Type: Number
     Default: 90
     Description: 'Number of days before expiring old object versions'
-  
+
   Application:
     Type: String
     Default: 'Unknown'
     Description: 'Application name for tagging'
-  
+
   Environment:
     Type: String
     Default: 'demo'
     Description: 'Environment for tagging'
-  
+
   Owner:
     Type: String
     Default: 'terraform'
@@ -65,27 +65,6 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      BucketPolicy: !Sub |
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Sid": "DenyInsecureConnections",
-              "Effect": "Deny",
-              "Principal": "*",
-              "Action": "s3:*",
-              "Resource": [
-                "arn:aws:s3:::$${S3Bucket}/*",
-                "arn:aws:s3:::$${S3Bucket}"
-              ],
-              "Condition": {
-                "Bool": {
-                  "aws:SecureTransport": "false"
-                }
-              }
-            }
-          ]
-        }
       LifecycleConfiguration:
         Rules:
           - Id: TransitionToIA
@@ -103,10 +82,8 @@ Resources:
             NoncurrentVersionExpirationInDays: !Ref LifecycleExpirationDays
       LoggingConfiguration: !If
         - EnableLoggingCondition
-        - !Sub
-          - DestinationBucketName: $${LoggingBucket}
-            LogFilePrefix: access-logs/
-          - LoggingBucket: !Ref LoggingBucket
+        - DestBucketName: !Ref LoggingBucket
+          LogFilePrefix: access-logs/
         - !Ref AWS::NoValue
       Tags:
         - Key: Name
@@ -134,27 +111,6 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      BucketPolicy: !Sub |
-        {
-          "Version": "2012-10-17",
-          "Statement": [
-            {
-              "Sid": "DenyInsecureConnections",
-              "Effect": "Deny",
-              "Principal": "*",
-              "Action": "s3:*",
-              "Resource": [
-                "arn:aws:s3:::$${LoggingBucket}/*",
-                "arn:aws:s3:::$${LoggingBucket}"
-              ],
-              "Condition": {
-                "Bool": {
-                  "aws:SecureTransport": "false"
-                }
-              }
-            }
-          ]
-        }
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldLogs
@@ -172,6 +128,43 @@ Resources:
         - Key: ManagedBy
           Value: aws-service-catalog
 
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::$${S3Bucket}/*'
+              - !Sub 'arn:aws:s3:::$${S3Bucket}'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: EnableLoggingCondition
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::$${LoggingBucket}/*'
+              - !Sub 'arn:aws:s3:::$${LoggingBucket}'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
 Conditions:
   EnableLoggingCondition: !Equals [!Ref EnableLogging, 'true']
 
@@ -179,11 +172,11 @@ Outputs:
   BucketName:
     Description: 'Name of the created S3 bucket'
     Value: !Ref S3Bucket
-  
+
   BucketArn:
     Description: 'ARN of the created S3 bucket'
     Value: !GetAtt S3Bucket.Arn
-  
+
   LoggingBucketName:
     Condition: EnableLoggingCondition
     Description: 'Name of the logging bucket'
